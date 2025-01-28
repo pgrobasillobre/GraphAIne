@@ -5,25 +5,34 @@ set -e
 
 echo "Installing GraphAIne..."
 
-# Step 1: Create a virtual environment (optional but recommended)
+# Step 1: Create a virtual environment (if it doesn't already exist)
 if [ ! -d "venv" ]; then
     echo "Creating a virtual environment..."
     python3 -m venv venv
-    source venv/bin/activate
 else
-    echo "Virtual environment already exists. Activating..."
-    source venv/bin/activate
+    echo "Virtual environment already exists."
 fi
 
-# Step 2: Upgrade pip
+# Step 2: Activate the virtual environment
+# Use the correct activation path for the platform
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate  # Linux/macOS
+elif [ -f "venv/Scripts/activate" ]; then
+    source venv/Scripts/activate  # Windows
+else
+    echo "Error: Unable to find the virtual environment activation script."
+    exit 1
+fi
+
+# Step 3: Upgrade pip
 echo "Upgrading pip..."
 pip install --upgrade pip
 
-# Step 3: Install dependencies from requirements.txt
+# Step 4: Install dependencies from requirements.txt
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-# Step 4: Install the package in editable mode
+# Step 5: Install the package in editable mode
 echo "Installing GraphAIne in editable mode..."
 pip install -e .
 
