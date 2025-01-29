@@ -2,9 +2,7 @@ import tensorflow as tf
 
 def parse_ffn_tfrecord(example_proto):
     """
-    Parse a single FFN-style data record from a TFRecord file.
-    This function defines the structure of the input TFRecord, extracts the features,
-    and reshapes the data into usable formats for training.
+    Parses a single FFN-style data record from a TFRecord file, ensuring NaN values are handled correctly.
 
     Args:
         example_proto: A single serialized TFRecord protobuf string.
@@ -12,11 +10,12 @@ def parse_ffn_tfrecord(example_proto):
     Returns:
         A tuple containing:
             - Input features as a dictionary with keys:
-                'geometries': A dense tensor of shape (max_atoms, 3).
+                'geometries': A dense tensor of shape (max_atoms, 3), replacing NaNs with -9999.99.
                 'frequency': A tensor of shape (1,).
-            - Target labels ('charges') as a dense tensor of shape (max_atoms, 6).
+            - Target labels ('charges') as a dense tensor of shape (max_atoms, 6), replacing NaNs with 0.0.
     """
-    # Define the structure of the features in the TFRecord
+    
+    # Step 1: Define the feature structure inside the TFRecord
     feature_description = {
         'unique_id': tf.io.FixedLenFeature([], tf.int64),          # Unique identifier for the record
         'structure_id': tf.io.FixedLenFeature([], tf.int64),       # Identifier for the molecular structure
@@ -25,35 +24,32 @@ def parse_ffn_tfrecord(example_proto):
         'charges': tf.io.VarLenFeature(tf.float32),                # Sparse feature for atomic charges
     }
 
-    # Parse the raw serialized example into a dictionary of features
+    # Step 2: Parse the raw serialized example into a dictionary of features
     example = tf.io.parse_single_example(example_proto, feature_description)
 
-    # Extract the 'frequency' feature and expand dimensions
-    # (converting a scalar to a rank-1 tensor for compatibility)
-    frequency = example['frequency']  # Scalar tensor
-    frequency = tf.expand_dims(frequency, axis=0)  # Shape becomes (1,)
+    # Step 3: Extract 'frequency' (scalar) and ensure it's properly shaped
+    frequency = tf.expand_dims(example['frequency'], axis=0)  # Shape: (1,)
 
-    # Extract the 'geometries' and 'charges' features (stored as sparse tensors)
-    # Convert them to dense tensors so they are easier to work with
-    geometries = example['geometries']  # Sparse tensor
-    geometries = tf.sparse.to_dense(geometries)  # Dense tensor
+    # Step 4: Extract 'geometries' and 'charges' as dense tensors
+    geometries = tf.sparse.to_dense(example['geometries'])  # Convert from sparse to dense tensor
+    charges = tf.sparse.to_dense(example['charges'])  # Convert from sparse to dense tensor
 
-    charges = example['charges']  # Sparse tensor
-    charges = tf.sparse.to_dense(charges)  # Dense tensor
-
-    # Calculate the number of atoms in the molecule
-    # The geometries tensor is a flattened array of x, y, z coordinates, so dividing by 3 gives the number of atoms
+    # Step 5: Calculate number of atoms
+    # Geometries is a flat array storing (x, y, z) coordinates, so dividing by 3 gives the number of atoms
     max_atoms = tf.shape(geometries)[0] // 3
 
-    # Reshape the 'geometries' tensor into (max_atoms, 3), where each row is an (x, y, z) coordinate
+    # Step 6: Reshape tensors to (max_atoms, 3) for geometries and (max_atoms, 6) for charges
     geometries = tf.reshape(geometries, (max_atoms, 3))
-
-    # Reshape the 'charges' tensor into (max_atoms, 6), where each row contains 6 charge-related features
     charges = tf.reshape(charges, (max_atoms, 6))
 
-    # Return the parsed data:
-    # - A dictionary of input features: 'geometries' and 'frequency'
-    # - The target labels: 'charges'
+    # 🔥 Step 7: Handle NaN values 🔥
+    # Replace NaNs in geometries with -9999.99 (so they can be masked in training)
+    geometries = tf.where(tf.math.is_nan(geometries), tf.fill(tf.shape(geometries), -9999.99), geometries)
+
+    # Replace NaNs in charges with 0.0 (so they don't affect loss computation)
+    charges = tf.where(tf.math.is_nan(charges), tf.zeros_like(charges), charges)
+
+    # Return processed input features and target labels
     return {'geometries': geometries, 'frequency': frequency}, charges
 
 

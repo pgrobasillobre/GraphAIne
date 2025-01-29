@@ -28,79 +28,124 @@ def masked_loss(y_true, y_pred, mask_value=-9999.99):
 
 def build_ffn(input_geometry_shape, input_frequency_shape):
     """
-    Build a Feedforward Neural Network (FFN) for molecular data,
-    handling NaN padding in the input by replacing it with -9999.99.
+    Build a Feedforward Neural Network (FFN) for molecular data.
 
+    This model consists of:
+    - A **geometry branch** that processes atomic coordinates (x, y, z) using 1D convolutional layers.
+    - A **frequency branch** that processes a scalar frequency value using dense layers.
+    - A **fully connected layer** that combines both branches to predict atomic charge distributions.
+    
     Args:
         input_geometry_shape (tuple): The shape of the geometry input (N, 3), 
-                                      where N is the number of atoms and 3 represents (x, y, z) coordinates.
+                                      where N is the number of atoms, and 3 represents (x, y, z) coordinates.
         input_frequency_shape (tuple): The shape of the frequency input (e.g., (1,)).
 
     Returns:
-        tf.keras.Model: The compiled FFN model ready for training.
+        tf.keras.Model: The compiled FFN model, ready for training.
     """
 
     # Step 1: Define Model Inputs
-    # The network has two input branches: one for atomic geometries and one for frequency data.
+    # ===================================
+    # The model expects two different inputs:
+    #   1. **Geometric Input**: A tensor of shape (N, 3), where each row contains (x, y, z) atomic coordinates.
+    #   2. **Frequency Input**: A tensor of shape (1,), representing a scalar frequency value.
     geometry_input = layers.Input(shape=input_geometry_shape, name="geometry_input")
     frequency_input = layers.Input(shape=input_frequency_shape, name="frequency_input")
 
-    # Step 2: Handle NaN Values in the Geometry Input
-    # Replace NaN values with a constant (-9999.99) so TensorFlow can process the data properly.
-    geometry_input_cleaned = tf.where(
-        tf.math.is_nan(geometry_input),  # Check where values are NaN
-        tf.fill(tf.shape(geometry_input), -9999.99),  # Replace NaN with -9999.99
-        geometry_input  # Keep original values where no NaN is found
-    )
+    # Step 2: Process the Geometry Input Using 1D Convolutions
+    # ===================================
+    # The **geometry branch** will apply 1D convolutions to learn local atomic interactions.
+    # The first convolution extracts **basic atomic relationships**.
+    x = layers.Conv1D(
+        filters=64,           # Number of filters (64 distinct patterns learned)
+        kernel_size=3,        # Looks at 3 neighboring atoms at a time
+        activation='relu',     # Applies non-linearity to capture complex relationships
+        padding='same'         # Ensures the output size remains (N, 64)
+    )(geometry_input)
 
-    # Step 3: Process the Geometry Input Using 1D Convolutions
-    # Here, we use Conv1D layers to learn local atomic interactions and extract features.
-    
-    # First Conv1D layer: Extracts basic atomic relationships
-    x = layers.Conv1D(filters=64, kernel_size=3, activation='relu', padding='same')(geometry_input_cleaned)
+    # The second convolution expands the feature representation and **learns deeper molecular patterns**.
+    x = layers.Conv1D(
+        filters=128,          # Doubles the number of filters for richer feature extraction
+        kernel_size=3,        # Again, looks at 3-atom neighborhoods
+        activation='relu',    # Uses ReLU for non-linearity
+        padding='same'        # Keeps dimensions unchanged
+    )(x)
 
-    # Second Conv1D layer: Expands feature representation and learns deeper atomic interactions
-    x = layers.Conv1D(filters=128, kernel_size=3, activation='relu', padding='same')(x)
-
-    # Global Average Pooling: Reduces dimensions by computing the average feature value per atom
-    # This ensures the model can handle molecules of different sizes robustly.
+    # The `GlobalAveragePooling1D` layer ensures **variable-length molecules can be processed**.
+    # It **compresses all atomic features into a single fixed-size vector** by averaging them.
     x = layers.GlobalAveragePooling1D()(x)
 
-    # Fully connected layer: Further processing to extract high-level molecular features
-    x = layers.Dense(256, activation='relu')(x)
+    # A fully connected (Dense) layer refines the extracted features.
+    x = layers.Dense(
+        256,               # 256 neurons for more complex feature interactions
+        activation='relu'   # Non-linear activation function
+    )(x)
 
-    # Step 4: Process the Frequency Input
-    # The frequency input is a scalar or small vector, processed through dense layers.
+    # Step 3: Process the Frequency Input
+    # ===================================
+    # The **frequency branch** processes a single scalar value through fully connected layers.
+    # First, it expands into a 32-neuron representation.
+    y = layers.Dense(
+        32,               # Expands single value to a more expressive feature space
+        activation='relu'  # ReLU ensures the model can learn complex patterns
+    )(frequency_input)
 
-    # First Dense Layer for frequency input: Expands the representation of the frequency value
-    y = layers.Dense(32, activation='relu')(frequency_input)
+    # A second layer further refines the frequency-based representation.
+    y = layers.Dense(
+        16,               # Further reduces to a compact representation
+        activation='relu'
+    )(y)
 
-    # Second Dense Layer for frequency input: Extracts refined features from the frequency branch
-    y = layers.Dense(16, activation='relu')(y)
-
-    # Step 5: Combine the Geometry and Frequency Branches
-    # We concatenate the extracted features from both branches to form a single feature vector.
+    # Step 4: Combine the Geometry and Frequency Branches
+    # ===================================
+    # The two feature representations are **concatenated into a single vector**.
     combined = layers.Concatenate()([x, y])
 
-    # Fully connected layers for combined representation
-    combined = layers.Dense(128, activation='relu')(combined)
-    combined = layers.Dense(64, activation='relu')(combined)
+    # Fully connected layers further refine the combined representation.
+    combined = layers.Dense(
+        128,               # 128 neurons to process the joint feature space
+        activation='relu'
+    )(combined)
 
-    # Step 6: Output Layer
-    # The model predicts `N * 6` values, where N is the number of atoms.
-    # Each atom has 6 predicted properties (e.g., charge distributions).
-    outputs = layers.Dense(input_geometry_shape[0] * 6, activation='linear')(combined)
+    combined = layers.Dense(
+        64,               # Reducing feature space further
+        activation='relu'
+    )(combined)
 
-    # Reshape the output to match the expected shape: (N, 6)
+    # Step 5: Output Layer
+    # ===================================
+    # The output is a prediction of `N * 6` values, where:
+    #   - `N` is the number of atoms
+    #   - Each atom has **6 charge-related predictions**.
+    # This is a **regression task** (continuous values), so we use a **linear activation**.
+    outputs = layers.Dense(
+        input_geometry_shape[0] * 6,  # Total outputs: N atoms * 6 features per atom
+        activation='linear'           # Linear activation for continuous value prediction
+    )(combined)
+
+    # The output is **reshaped** to `(N, 6)`, where:
+    #   - `N` represents atoms.
+    #   - Each atom gets **6 output values** (predictions).
     outputs = layers.Reshape((input_geometry_shape[0], 6))(outputs)
 
-    # Step 7: Build the Model
-    # We define the model with two inputs (geometry and frequency) and one output (predicted atomic properties).
-    model = models.Model(inputs=[geometry_input, frequency_input], outputs=outputs)
+    # Step 6: Build the Model
+    # ===================================
+    # We define the model with two inputs (geometries and frequency) and one output (charge predictions).
+    model = models.Model(
+        inputs=[geometry_input, frequency_input],  # Takes both inputs
+        outputs=outputs,                           # Produces charge predictions
+        name="GraphAIne_FFN_Model"                 # Custom model name
+    )
 
-    # Step 8: Compile the Model with the Custom Masked Loss
-    # Using Adam optimizer and our custom loss function to ignore padding effects.
-    model.compile(optimizer='adam', loss=masked_loss)
+    # Step 7: Compile the Model with the Custom Masked Loss
+    # ===================================
+    # We use:
+    #   - The **Adam optimizer** for efficient training.
+    #   - A **custom loss function (`masked_loss`)** that ignores padded atoms (if present).
+    model.compile(
+        optimizer='adam',  # Adaptive learning rate optimization
+        loss=masked_loss   # Custom loss that ignores padding
+    )
 
     return model
 
