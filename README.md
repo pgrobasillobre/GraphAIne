@@ -25,6 +25,7 @@ Run the installation script to set up **GraphAIne**:
 ```sh
 chmod +x install.sh
 ./install.sh
+```
 
 ---
 
