@@ -10,17 +10,7 @@ from models.fnn import masked_loss  # Custom loss function
 
 # Define max number of atoms (padding requirement)
 MAX_ATOMS = 7662
-
-# Define model path
 MODEL_PATH = "../../checkpoints/ffn_model.keras"
-
-# Ensure the model file exists
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"❌ Model file not found at {MODEL_PATH}. Train the model first.")
-
-print("🔄 Loading trained model...")
-model = load_model(MODEL_PATH, custom_objects={"masked_loss": masked_loss})
-print("✅ Model loaded successfully!")
 
 def read_xyz(filename):
     """
@@ -56,21 +46,28 @@ def read_xyz(filename):
 
     return geometries
 
-def predict_charges(geometries, frequency):
+def predict_charges(model, geometries, frequency):
     """
     Predict atomic charges using the trained FFN model.
 
     Args:
+        model (tf.keras.Model): The trained FFN model.
         geometries (numpy.ndarray): Atomic coordinates (N, 3).
         frequency (float): Frequency value.
 
     Returns:
         np.ndarray: Predicted atomic charges (N, 6).
     """
+    # Replace NaN values in geometries with -9999.99 (or 0 if you prefer)
+    geometries = np.where(np.isnan(geometries), -9999.99, geometries)
+
+    # Expand dimensions to match the model's input format
     geometries = np.expand_dims(geometries, axis=0)  # Shape (1, N, 3)
     frequency = np.array([[frequency]], dtype=np.float32)  # Shape (1, 1)
 
+    # Run model prediction
     predicted_charges = model.predict([geometries, frequency])
+
     return predicted_charges[0]  # Remove batch dimension
 
 def save_results(filename, frequency, geometries, charges, output_dir):
@@ -96,7 +93,8 @@ def save_results(filename, frequency, geometries, charges, output_dir):
     data_to_save = np.hstack([valid_geometries, valid_charges])  # [x, y, z, q_real_1, ..., q_imag_6]
 
     # Save to file
-    np.savetxt(output_filename, data_to_save, fmt="%.6f",
+    np.savetxt(output_filename, data_to_save, fmt="%25.15f",
+               delimiter="     ",  # 5 spaces between columns
                header="x y z q_real_1 q_real_2 q_real_3 q_imag_1 q_imag_2 q_imag_3",
                comments="")
     print(f"📄 Results saved to {output_filename}")
@@ -110,6 +108,11 @@ if __name__ == "__main__":
     parser.add_argument("-step", type=float, required=True, help="Step size for frequency range")
 
     args = parser.parse_args()
+
+    # If the user requested help (-h), exit before loading the model
+    if len(sys.argv) == 2 and sys.argv[1] in ["-h", "--help"]:
+        parser.print_help()
+        sys.exit(0)
 
     # Extract filename without extension for output naming
     base_filename = os.path.splitext(os.path.basename(args.geom))[0]
@@ -125,11 +128,16 @@ if __name__ == "__main__":
     results_folder = f"{base_filename}_results"
     os.makedirs(results_folder, exist_ok=True)
 
+    # 🔄 **Load the model only if needed**
+    print("🔄 Loading trained model...")
+    model = load_model(MODEL_PATH, custom_objects={"masked_loss": masked_loss})
+    print("✅ Model loaded successfully!")
+
     # Iterate over frequencies and compute charges
     print(f"🔄 Computing charges for {len(frequencies)} frequencies...")
     for freq in frequencies:
         print(f"⚡ Processing frequency: {freq:.2f}")
-        charges = predict_charges(geometries, freq)  # Compute charges
+        charges = predict_charges(model, geometries, freq)  # Compute charges
         save_results(base_filename, freq, geometries, charges, results_folder)  # Pass geometries
 
     print("✅ Batch prediction complete!")

@@ -6,8 +6,9 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
-        "numpy>=1.19",
-        "tensorflow>=2.0",
+        "numpy",
+        "tensorflow",
+        "pandas",
     ],
     include_package_data=True,
     description="A deep learning framework for graphene simulations",
@@ -16,7 +17,7 @@ setup(
     url="https://github.com/pgrobasillobre/GraphAIne",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
 )
