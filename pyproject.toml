@@ -17,8 +17,9 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 dependencies = [
-    "numpy>=1.19",
-    "tensorflow>=2.0"
+    "numpy",
+    "tensorflow",
+    "pandas"
 ]
 
 [tool.setuptools.packages.find]
