@@ -19,7 +19,8 @@ classifiers = [
 dependencies = [
     "numpy",
     "tensorflow",
-    "pandas"
+    "pandas",
+    "matplotlib"
 ]
 
 [tool.setuptools.packages.find]
