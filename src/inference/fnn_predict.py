@@ -6,11 +6,21 @@ import argparse
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+
+# Automatically detect script's location
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Add `src` directory to Python's path so `models.fnn` can be found
+sys.path.append(os.path.abspath(os.path.join(SCRIPT_DIR, "../../src")))
+
+# Import the custom loss function after modifying sys.path
 from models.fnn import masked_loss  # Custom loss function
 
 # Define max number of atoms (padding requirement)
 MAX_ATOMS = 7662
-MODEL_PATH = "../../checkpoints/ffn_model.keras"
+
+# Define the absolute model path
+MODEL_PATH = os.path.join(SCRIPT_DIR, "../../checkpoints/ffn_model.keras")
 
 def read_xyz(filename):
     """
