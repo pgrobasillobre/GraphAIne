@@ -84,15 +84,21 @@ def build_ffn(input_geometry_shape, input_frequency_shape):
     # Step 3: Process the Frequency Input
     # ===================================
     # The **frequency branch** processes a single scalar value through fully connected layers.
-    # First, it expands into a 32-neuron representation.
+    # First, it expands into a 128-neuron representation.
     y = layers.Dense(
-        32,               # Expands single value to a more expressive feature space
+        128,              # Expands single value to a more expressive feature space
         activation='relu'  # ReLU ensures the model can learn complex patterns
     )(frequency_input)
-
-    # A second layer further refines the frequency-based representation.
+    
+    # A second layer reduces the representation size.
     y = layers.Dense(
-        16,               # Further reduces to a compact representation
+        64,               # Reduces to a more compact representation
+        activation='relu'
+    )(y)
+    
+    # A third layer further refines the frequency-based representation.
+    y = layers.Dense(
+        32,               # Further compresses the feature space
         activation='relu'
     )(y)
 
