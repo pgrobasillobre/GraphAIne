@@ -6,6 +6,30 @@ import numpy as np
 import argparse
 import pandas as pd
 import glob
+import matplotlib.pyplot as plt
+
+### ============================================================
+### FUNCTION TO PLOT VALIDATION AND TRAINING LOSS AGAINS EPOCHS
+### ============================================================
+def plot_loss_curve(log_file):
+    """
+    Read training loss from CSV and plot training & validation loss curves.
+    """
+    # Load CSV file
+    df = pd.read_csv(log_file)
+
+    # Plot
+    plt.figure(figsize=(8, 5))
+    plt.plot(df["Epoch"], df["Train_Loss"], label="Training Loss", marker="o")
+    plt.plot(df["Epoch"], df["Val_Loss"], label="Validation Loss", marker="s")
+    
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training & Validation Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 
 ### ============================================================
 ### FUNCTION TO READ .FREQ FILES AND EXTRACT ATOMIC POSITIONS & CHARGES
@@ -147,12 +171,19 @@ def process_freq_files(folder):
 ### MAIN SCRIPT: ARGUMENT PARSING
 ### ============================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Post-process .freq files (convert to .pqr OR compute polarization).")
+    parser = argparse.ArgumentParser(description="Process .freq files for different purposes.")
+
+    # Arguments for .pqr conversion
     parser.add_argument("-pqr", type=str, help="Path to a .freq file to convert to .pqr")
     parser.add_argument("-charge_type", type=str, choices=["x", "y"], help="Choose 'x' for q_imag_1 or 'y' for q_imag_2")
-    parser.add_argument("-polar", type=str, help="Path to the folder containing .freq files for polarization calculation")
     parser.add_argument("-atom_type", type=str, default="C", help="Specify the atom type (default: C)")
     parser.add_argument("-eta", type=float, default=2.7, help="Specify the atomic radius in Å (default: 2.7)")
+
+    # Argument for polarization calculation
+    parser.add_argument("-polar", type=str, help="Path to the folder containing .freq files for polarization calculation")
+
+    # Argument for plotting loss
+    parser.add_argument("-plot", type=str, help="Path to the csv file")
 
     args = parser.parse_args()
 
@@ -169,6 +200,10 @@ if __name__ == "__main__":
 
     elif args.polar:
         process_freq_files(args.polar)
+
+    elif args.plot:
+        plot_loss_curve(args.file)
+
 
     else:
         print("❌ Error: You must specify either `-pqr` or `-polar` for processing.")

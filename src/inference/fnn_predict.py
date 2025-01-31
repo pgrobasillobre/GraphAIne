@@ -68,8 +68,8 @@ def predict_charges(model, geometries, frequency):
     Returns:
         np.ndarray: Predicted atomic charges (N, 6).
     """
-    # Replace NaN values in geometries with -9999.99 (or 0 if you prefer)
-    geometries = np.where(np.isnan(geometries), -9999.99, geometries)
+    # Replace NaN values in geometries with 1.0e6
+    geometries = np.where(np.isnan(geometries), 1.0e6, geometries)
 
     # Expand dimensions to match the model's input format
     geometries = np.expand_dims(geometries, axis=0)  # Shape (1, N, 3)

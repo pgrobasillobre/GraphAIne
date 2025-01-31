@@ -10,7 +10,7 @@ def parse_ffn_tfrecord(example_proto):
     Returns:
         A tuple containing:
             - Input features as a dictionary with keys:
-                'geometries': A dense tensor of shape (max_atoms, 3), replacing NaNs with -9999.99.
+                'geometries': A dense tensor of shape (max_atoms, 3), replacing NaNs with 1.0e6
                 'frequency': A tensor of shape (1,).
             - Target labels ('charges') as a dense tensor of shape (max_atoms, 6), replacing NaNs with 0.0.
     """
@@ -43,8 +43,8 @@ def parse_ffn_tfrecord(example_proto):
     charges = tf.reshape(charges, (max_atoms, 6))
 
     # 🔥 Step 7: Handle NaN values 🔥
-    # Replace NaNs in geometries with -9999.99 (so they can be masked in training)
-    geometries = tf.where(tf.math.is_nan(geometries), tf.fill(tf.shape(geometries), -9999.99), geometries)
+    # Replace NaNs in geometries with 1.0e6 (so they can be masked in training)
+    geometries = tf.where(tf.math.is_nan(geometries), tf.fill(tf.shape(geometries), 1.0e6), geometries)
 
     # Replace NaNs in charges with 0.0 (so they don't affect loss computation)
     charges = tf.where(tf.math.is_nan(charges), tf.zeros_like(charges), charges)
@@ -53,41 +53,48 @@ def parse_ffn_tfrecord(example_proto):
     return {'geometries': geometries, 'frequency': frequency}, charges
 
 
-def create_ffn_dataset(tfrecord_file, batch_size=32, shuffle=True):
+def create_ffn_dataset(tfrecord_file, batch_size=32, shuffle=True, val_split=0.1, test_split=0.1):
     """
-    Create a TensorFlow dataset for FFN training from a TFRecord file.
+    Create TensorFlow datasets for FFN training, validation, and testing.
 
     Args:
-        tfrecord_file: Path to the TFRecord file containing the dataset.
-        batch_size: Number of samples per batch for training.
-        shuffle: Whether to shuffle the dataset.
+        tfrecord_file (str): Path to the TFRecord file.
+        batch_size (int): Number of samples per batch.
+        shuffle (bool): Whether to shuffle the dataset.
+        val_split (float): Fraction for validation set.
+        test_split (float): Fraction for test set.
 
     Returns:
-        A TensorFlow dataset object ready for training.
+        (train_dataset, val_dataset, test_dataset)
     """
-    # Step 1: Load the TFRecord file into a dataset
-    # Each element in the dataset is a raw serialized TFRecord
+    # Step 1: Load TFRecord dataset
     dataset = tf.data.TFRecordDataset(tfrecord_file)
 
-    # Step 2: Parse the raw TFRecord into structured data
-    # The `map` function applies `parse_ffn_tfrecord` to each element in the dataset
-    dataset = dataset.map(
-        parse_ffn_tfrecord,  # Function to parse each record
-        num_parallel_calls=tf.data.AUTOTUNE  # Use optimal parallelism for faster processing
-    )
+    # Step 2: Parse the dataset
+    dataset = dataset.map(parse_ffn_tfrecord, num_parallel_calls=tf.data.AUTOTUNE)
 
-    # Step 3: Shuffle the dataset (if enabled)
-    # Shuffling randomizes the order of records to improve training performance
+    # Step 3: Shuffle if enabled
     if shuffle:
-        dataset = dataset.shuffle(buffer_size=1000)  # Shuffle with a buffer of 1000 records
+        dataset = dataset.shuffle(buffer_size=1000)  # Ensures randomness
 
-    # Step 4: Batch the dataset
-    # Group consecutive elements into batches of size `batch_size`
-    dataset = dataset.batch(batch_size)
+    # Step 4: Count the number of records **before batching**
+    total_size = sum(1 for _ in dataset)  # Count total elements
+    val_size = int(total_size * val_split)
+    test_size = int(total_size * test_split)
+    train_size = total_size - val_size - test_size
 
-    # Step 5: Prefetch the dataset
-    # Prefetching allows the pipeline to prepare the next batch while the current batch is being processed
-    dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
+    print(f"📊 Total Samples: {total_size}, Train: {train_size}, Val: {val_size}, Test: {test_size}")
 
-    # Return the fully prepared dataset
-    return dataset
+    # Step 5: Split the dataset correctly
+    train_dataset = dataset.take(train_size)
+    val_dataset = dataset.skip(train_size).take(val_size)
+    test_dataset = dataset.skip(train_size + val_size).take(test_size)
+
+    # Step 6: Batch after splitting!
+    train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    test_dataset = test_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+    print(f"📊 Final Split: Train={sum(1 for _ in train_dataset)}, Validation={sum(1 for _ in val_dataset)}, Test={sum(1 for _ in test_dataset)}")
+
+    return train_dataset, val_dataset, test_dataset

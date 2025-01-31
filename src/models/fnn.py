@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models, backend as K
 
-def masked_loss(y_true, y_pred, mask_value=-9999.99):
+def masked_loss(y_true, y_pred, mask_value=1.0e6):
     """
     Custom loss function that ignores predictions where the input contained a padding value.
 

@@ -171,3 +171,4 @@ cython_debug/
 .pypirc
 data
 checkpoints/ffn/
+notebooks/training_log.csv
